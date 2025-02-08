@@ -40,6 +40,7 @@ async fn main() -> Result<()> {
         .route("/repo/{user}/{name}", get(handle_git))
         .route("/repo/{user}/{name}/{*path}", get(handle_dumb_protocol))
         .route("/repo/{user}/{name}/files", get(fetch_repo))
+        .route("/repo/{user}/{name}/branches", get(get_branches))
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
@@ -161,4 +162,22 @@ fn process_tree(repo: &Repository, tree: &git2::Tree, parent: &mut Vec<Node>) ->
     }
 
     Ok(())
+}
+
+async fn get_branches(
+    Path((user, name)): Path<(String, String)>,
+) -> Result<Json<Vec<String>>, Error> {
+    let path = PathBuf::from("repos").join(&user).join(&name);
+
+    let repo = Repository::open_bare(path)?;
+
+    let mut branches = Vec::new();
+
+    for branch in repo.branches(None)? {
+        let (branch, _) = branch?;
+
+        branches.push(branch.name()?.unwrap().to_string());
+    }
+
+    Ok(Json(branches))
 }
