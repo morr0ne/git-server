@@ -11,7 +11,10 @@ use axum::{
 use git2::Repository;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
+use tower::ServiceBuilder;
+use tower_http::{
+    compression::CompressionLayer, decompression::RequestDecompressionLayer, trace::TraceLayer,
+};
 use tracing::debug;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -33,11 +36,16 @@ async fn main() -> Result<()> {
         .try_init()?;
 
     let app = Router::new()
-        .layer(TraceLayer::new_for_http())
         .route("/repo", post(create_repo))
         .route("/repo/{user}/{name}", get(handle_git))
         .route("/repo/{user}/{name}/{*path}", get(handle_dumb_protocol))
-        .route("/repo/{user}/{name}/files", get(fetch_repo));
+        .route("/repo/{user}/{name}/files", get(fetch_repo))
+        .layer(
+            ServiceBuilder::new()
+                .layer(TraceLayer::new_for_http())
+                .layer(RequestDecompressionLayer::new())
+                .layer(CompressionLayer::new()),
+        );
 
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, PORT)).await?;
 
@@ -56,7 +64,8 @@ struct CreateRepo {
 async fn create_repo(Json(payload): Json<CreateRepo>) -> Result<(), Error> {
     let CreateRepo { user, name } = payload;
 
-    let path = PathBuf::from("repos").join(&user).join(&name);
+    let mut path = PathBuf::from("repos").join(&user).join(&name);
+    path.set_extension("git");
 
     debug!("Creating repo {name} for {user}");
 
