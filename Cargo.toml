@@ -6,7 +6,12 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.95"
 axum = { version = "0.8.1", features = ["http2", "ws", "multipart", "macros"] }
+git2 = "0.20.0"
 serde = { version = "1.0.217", features = ["derive"] }
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros"] }
+tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "tracing-log"] }
+tracing-subscriber = { version = "0.3.19", features = [
+    "env-filter",
+    "tracing-log",
+] }
