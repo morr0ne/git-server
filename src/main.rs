@@ -74,6 +74,7 @@ async fn create_repo(Json(payload): Json<CreateRepo>) -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(Debug)]
 enum Error {
     Git(git2::Error),
     NotFound,
@@ -118,12 +119,46 @@ async fn handle_dumb_protocol(
     Ok(res)
 }
 
-async fn fetch_repo(Path((user, name)): Path<(String, String)>) -> Result<(), Error> {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum Node {
+    File { name: String },
+    Directory { name: String, childs: Vec<Node> },
+}
+
+async fn fetch_repo(Path((user, name)): Path<(String, String)>) -> Result<Json<Node>, Error> {
     let path = PathBuf::from("repos").join(&user).join(&name);
 
     let repo = Repository::open_bare(path)?;
 
-    repo.head()?.peel_to_tree()?;
+    let tree = repo.head()?.peel_to_tree()?;
+
+    let mut root = Vec::new();
+
+    process_tree(&repo, &tree, &mut root)?;
+
+    Ok(Json(Node::Directory {
+        name: "root".to_string(),
+        childs: root,
+    }))
+}
+
+fn process_tree(repo: &Repository, tree: &git2::Tree, parent: &mut Vec<Node>) -> Result<(), Error> {
+    for entry in tree {
+        let name = entry.name().unwrap().to_string();
+
+        let node = if let Some(subtree) = entry.to_object(&repo)?.as_tree() {
+            let mut childs = Vec::new();
+
+            process_tree(repo, subtree, &mut childs)?;
+
+            Node::Directory { name, childs }
+        } else {
+            Node::File { name }
+        };
+
+        parent.push(node);
+    }
 
     Ok(())
 }
