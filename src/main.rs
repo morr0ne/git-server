@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use git2::Repository;
+use git2::{BlameOptions, Repository};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
@@ -123,8 +123,16 @@ async fn handle_dumb_protocol(
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Node {
-    File { name: String },
-    Directory { name: String, childs: Vec<Node> },
+    File {
+        name: String,
+        commit: String,
+        message: String,
+        modified: i64,
+    },
+    Directory {
+        name: String,
+        childs: Vec<Node>,
+    },
 }
 
 async fn fetch_repo(Path((user, name)): Path<(String, String)>) -> Result<Json<Node>, Error> {
@@ -136,7 +144,7 @@ async fn fetch_repo(Path((user, name)): Path<(String, String)>) -> Result<Json<N
 
     let mut root = Vec::new();
 
-    process_tree(&repo, &tree, &mut root)?;
+    process_tree(&repo, &tree, &mut root, "")?;
 
     Ok(Json(Node::Directory {
         name: "root".to_string(),
@@ -144,18 +152,39 @@ async fn fetch_repo(Path((user, name)): Path<(String, String)>) -> Result<Json<N
     }))
 }
 
-fn process_tree(repo: &Repository, tree: &git2::Tree, parent: &mut Vec<Node>) -> Result<(), Error> {
+fn process_tree<P: AsRef<std::path::Path>>(
+    repo: &Repository,
+    tree: &git2::Tree,
+    parent: &mut Vec<Node>,
+    prefix: P,
+) -> Result<(), Error> {
     for entry in tree {
         let name = entry.name().unwrap().to_string();
+
+        let full_path = prefix.as_ref().join(&name);
 
         let node = if let Some(subtree) = entry.to_object(&repo)?.as_tree() {
             let mut childs = Vec::new();
 
-            process_tree(repo, subtree, &mut childs)?;
+            process_tree(repo, subtree, &mut childs, &full_path)?;
 
             Node::Directory { name, childs }
         } else {
-            Node::File { name }
+            let mut blame_options = BlameOptions::new();
+
+            let blame = repo.blame_file(&full_path, Some(&mut blame_options))?;
+            let hunk = blame.get_index(0).unwrap();
+            let commit_id = hunk.final_commit_id();
+            let commit = repo.find_commit(commit_id)?;
+            let message = commit.message().unwrap().to_string();
+            let modified = commit.committer().when().seconds();
+
+            Node::File {
+                name,
+                commit: commit_id.to_string(),
+                message,
+                modified,
+            }
         };
 
         parent.push(node);
