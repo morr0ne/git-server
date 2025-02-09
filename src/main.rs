@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use git2::{BlameOptions, Repository};
+use git2::{BlameOptions, BranchType, ObjectType, Repository};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
@@ -41,6 +41,7 @@ async fn main() -> Result<()> {
         .route("/repo/{user}/{name}/{*path}", get(handle_dumb_protocol))
         .route("/repo/{user}/{name}/files", get(fetch_repo))
         .route("/repo/{user}/{name}/branches", get(get_branches))
+        .route("/repo/{user}/{name}/blob/{branch}/{*path}", get(get_blob))
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
@@ -209,4 +210,40 @@ async fn get_branches(
     }
 
     Ok(Json(branches))
+}
+
+async fn get_blob(
+    Path((user, name, branch, path)): Path<(String, String, String, String)>,
+) -> Result<Vec<u8>, Error> {
+    let repo_path = PathBuf::from("repos").join(&user).join(&name);
+
+    let repo = Repository::open_bare(repo_path)?;
+
+    debug!("Opening {path} at branch {branch}");
+
+    let blob = read_blob_from_branch(&repo, &path, &branch)?;
+
+    Ok(blob)
+}
+
+fn read_blob_from_branch(
+    repo: &Repository,
+    file_path: &str,
+    branch_name: &str,
+) -> Result<Vec<u8>, git2::Error> {
+    let branch = repo.find_branch(branch_name, BranchType::Local)?;
+
+    let commit = branch.get().peel_to_commit()?;
+
+    let tree = commit.tree()?;
+
+    let entry = tree.get_path(std::path::Path::new(file_path))?;
+
+    if entry.kind() != Some(ObjectType::Blob) {
+        return Err(git2::Error::from_str("Path does not point to a blob"));
+    }
+
+    let blob = repo.find_blob(entry.id())?;
+
+    Ok(blob.content().to_vec())
 }
