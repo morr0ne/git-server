@@ -221,7 +221,7 @@ async fn get_blob(
 
     debug!("Opening {path} at branch {branch}");
 
-    let blob = read_blob_from_branch(&repo, &path, &branch)?;
+    let blob = read_blob_from_branch(&repo, &path, &branch).map_err(|_| Error::NotFound)?;
 
     Ok(blob)
 }
