@@ -8,7 +8,7 @@ anyhow = "1.0.95"
 axum = { version = "0.8.1", features = ["http2", "ws", "multipart", "macros"] }
 git2 = "0.20.0"
 serde = { version = "1.0.217", features = ["derive"] }
-tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.43.1", features = ["rt-multi-thread", "macros"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["compression-full", "decompression-full", "trace"] }
 tracing = "0.1.41"
