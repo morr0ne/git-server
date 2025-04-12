@@ -2,11 +2,11 @@ use std::{fs, net::Ipv4Addr, path::PathBuf};
 
 use anyhow::Result;
 use axum::{
+    Json, Router,
     extract::Path,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use git2::{BlameOptions, BranchType, ObjectType, Repository};
 use serde::{Deserialize, Serialize};
